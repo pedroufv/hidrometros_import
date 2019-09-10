@@ -6,6 +6,7 @@ use App\Hydrometers;
 use App\Readings;
 use LaravelZero\Framework\Commands\Command;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 class ImportCommand extends Command
 {
@@ -41,21 +42,35 @@ class ImportCommand extends Command
 
             for ($column = 'C'; $column != $lastColumn; $column++) {
 
-                $attributes['value'] =  $sheet->getCell($column.$rowIndex)->getCalculatedValue();
-                if(null === $attributes['value'])
+                $attributes['value'] =  trim(str_replace(',', '.', $sheet->getCell($column.$rowIndex)->getCalculatedValue()));
+                if(null === $attributes['value'] OR empty($attributes['value']))
                     continue;
 
                 $attributes['hydrometer_id'] = $hydrometer->id;
-                $attributes['read_at'] = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($sheet->getCell($column.'1')->getCalculatedValue());
+
+                $attributes['read_at'] = new \DateTime();
+                $read_at = Date::excelToTimestamp($sheet->getCell($column.'1')->getCalculatedValue());
+
+                $time = $sheet->getCell($column.'2')->getValue();
+                if(null !== $time AND !strpos($time, 'às') AND !strpos($time, 'àS')) $read_at +=  Date::excelToTimestamp($time);
+
+                $attributes['read_at']->setTimestamp($read_at);
+
+                if(strpos($time, 'às')) $attributes['read_at']->modify('+'.strtok($time, ':').' hours');
+
                 $attributes['reader'] = '10971';
 
                 Readings::create($attributes);
 
                 $count++;
+
+                $this->info($count.') '. $numero .','. $attributes['value'] .','.$attributes['read_at']->format('Y-m-d H:i:s'));
             }
+
+            $this->info("Hidrometro $numero: importadas $count leituras");
         }
 
-        $this->info('Total de leituras importadas: '.$count);
+        $this->info("Total de leituras importadas: $count");
 
         return $count;
     }
